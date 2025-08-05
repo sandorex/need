@@ -1,0 +1,16 @@
+[package]
+name = "need"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.98"
+ratatui = "0.29.0"
+crossterm = "0.29.0"
+regex = "1.11.1"
+toml = "0.9.4"
+serde = { version = "1.0.219", features = ["serde_derive"] }
+
+[build-dependencies]
+anyhow = "1.0.98"
+vergen-git2 = { version = "1.0.7", features = ["build", "cargo", "rustc"] }
