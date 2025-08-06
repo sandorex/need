@@ -8,7 +8,7 @@ pub trait Action {
     fn execute(&self, editor: &mut Editor);
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(tag = "action")]
 #[serde(rename_all(serialize = "kebab-case"))]
 pub enum Actions {
@@ -29,7 +29,7 @@ impl Actions {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Chain {
     chain: Vec<Actions>,
 }
@@ -42,10 +42,10 @@ impl Action for Chain {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Sleep {
     /// Time in millis
-    time: u64,
+    pub time: u64,
 }
 
 impl Action for Sleep {
@@ -54,19 +54,19 @@ impl Action for Sleep {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct Mode {
-    mode: String,
+    pub mode: String,
 }
 
 impl Action for Mode {
     fn execute(&self, editor: &mut Editor) {
-        // editor.
-        // TODO editor does not have a global mode
+        println!("Switch to {:?}", self.mode);
+        // TODO implement editor.set_mode
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct MoveTo {
     pub x: u16,
     pub y: u16,
@@ -84,7 +84,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_actions() {
+    fn test_actions_serialization() {
         let action = Actions::Chain(Chain {
             chain: vec![
                 Actions::MoveTo(MoveTo { x: 16, y: 12 }),

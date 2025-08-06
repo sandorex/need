@@ -1,9 +1,11 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::time::Instant;
 
 use crate::buffer::Buffer;
 use crate::keymap::Keymap;
+use crate::util::{Key, KeySequence};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{crossterm::event::Event, layout::Rect, style::Style, widgets::Widget};
 
@@ -24,13 +26,13 @@ pub struct Editor {
     last_keypress: Instant,
 
     /// Keys pressed, used for chorded keys
-    pub key_buffer: Vec<KeyEvent>,
+    pub key_buffer: Vec<Key>,
 
-    /// Current mode of the editor
-    pub mode: String,
+    /// Current keymap
+    pub keymap: Rc<Keymap>,
 
-    /// Keymaps loaded
-    pub keymaps: HashMap<String, Keymap>,
+    /// All keymaps defined
+    pub keymaps: HashMap<String, Rc<Keymap>>,
 }
 
 impl<'a> Default for Editor {
@@ -43,7 +45,7 @@ impl<'a> Default for Editor {
             buffers: vec![Buffer::default()],
             last_keypress: Instant::now(),
             key_buffer: vec![],
-            mode: crate::MODE_NORM.to_string(),
+            keymap: Rc::new(Keymap::new("NORMAL".to_string())),
             keymaps: HashMap::new(),
         }
     }
@@ -56,7 +58,6 @@ impl Editor {
         }
     }
 
-    // TODO should probably handle keymaps here
     pub fn handle_crossterm_event(&mut self, event: &Event) {
         // remember time and then use that to detect if no key is pressed for long enough for chorded keys
         match event {
@@ -69,42 +70,37 @@ impl Editor {
                     return;
                 }
 
-                // if self.key_buffer == vec![]
                 if ev.kind == KeyEventKind::Press {
-                    // println!("diff {}", self.last_keypress.elapsed().as_millis());
-                    self.key_buffer.push(*ev);
+                    self.key_buffer.push(ev.clone().into());
                     self.last_keypress = Instant::now();
+
+                    // TODO this is really ugly, could also be its own function
+                    // if the keymap has no more keys defined then just execute the action
+                    if let Some(entry) = self.keymap.get(&self.key_buffer) {
+                        if entry.get_map().is_none() {
+                            if let Some(action) = entry.get_action().cloned() {
+                                self.key_buffer.clear();
+                                action.execute(self);
+                            }
+                        }
+                    }
                 }
             }
             _ => {}
         }
-        // } else {
-        //     if !self.key_buffer.is_empty() {
-        //         println!("{:?}", self.key_buffer);
-        //         self.key_buffer.clear();
-        //         // TODO check if there is an action with this key
-        //         // TODO otherwise wait for next one
-        //         // self.buffers.get_mut(0).unwrap().mode = "AA";
-        //     }
-        //     // TODO chorded key
-        // }
-
-        // if let Some(buffer) = self.buffers.get_mut(self.buffer_index) {
-        //     buffer.handle_event(event);
-        // }
     }
 
     pub fn update(&mut self) {
-        // self.buffers.get_mut(0).unwrap().cursor.y += 1;
-        // println!("yes");
-        // NOTE currently even if there are no chorded key sequence the delay is present TODO
+        // execute action if defined with current key buffer after some delay
         if !self.key_buffer.is_empty() {
             let elapsed = self.last_keypress.elapsed().as_millis();
-            // dbg!(&elapsed);
-            if elapsed >= 250 {
-                println!("{:?}", self.key_buffer);
-                // self.key_buffer = vec![];
-                self.key_buffer.clear();
+            if elapsed >= 300 {
+                if let Some(entry) = self.keymap.get(&self.key_buffer) {
+                    if let Some(action) = entry.get_action().cloned() {
+                        self.key_buffer.clear();
+                        action.execute(self);
+                    }
+                }
             }
         }
     }
@@ -129,16 +125,16 @@ impl Widget for &Editor {
             .constraints([Constraint::Percentage(50); 2])
             .split(layout[1]);
 
-        Span::from(self.mode[..4].to_uppercase())
+        Span::from(self.keymap.name[..4].to_uppercase())
             .into_left_aligned_line()
             .render(layout_statusbar[0], buf);
 
         if let Some(buffer) = self.buffers.get(self.buffer_index) {
-            let keys = self.key_buffer.iter().map(|x| x.code).collect::<Vec<_>>();
-
             Span::from(format!(
-                "{:?}  {}:{}",
-                keys, buffer.cursor.y, buffer.cursor.x
+                "{}  {}:{}",
+                Into::<KeySequence>::into(&self.key_buffer),
+                buffer.cursor.y,
+                buffer.cursor.x
             ))
             .into_right_aligned_line()
             .render(layout_statusbar[1], buf);

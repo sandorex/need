@@ -1,30 +1,41 @@
-use ratatui::crossterm::event::{KeyCode, KeyModifiers, MediaKeyCode};
+use std::fmt::Display;
+
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MediaKeyCode};
 
 /// Represents a single key
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Key {
-    code: KeyCode,
-    modifiers: KeyModifiers,
+    pub code: KeyCode,
+    pub modifiers: KeyModifiers,
+}
+
+impl Default for Key {
+    fn default() -> Self {
+        Self {
+            code: KeyCode::Null,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
 }
 
 impl TryFrom<&str> for Key {
     type Error = String;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        // TODO error checking
-
-        let mut segments: Vec<&str> = value.split('-').collect();
-        let key = segments.pop().unwrap();
+        let (mods_raw, key) = match value.split_once('-') {
+            Some(x) => x,
+            None => return Err(format!("Invalid key {value:?}")),
+        };
 
         let mut modifiers = KeyModifiers::NONE;
-        for seg in segments {
-            match seg.to_lowercase().as_str() {
-                "c" => modifiers.set(KeyModifiers::CONTROL, true),
-                "h" => modifiers.set(KeyModifiers::HYPER, true),
-                "a" => modifiers.set(KeyModifiers::ALT, true),
-                "s" => modifiers.set(KeyModifiers::SHIFT, true),
-                "m" => modifiers.set(KeyModifiers::SUPER, true),
-                _ => return Err(format!("Invalid modifier {seg:?}")),
+        for ch in mods_raw.chars() {
+            match ch.to_ascii_lowercase() {
+                'c' => modifiers.set(KeyModifiers::CONTROL, true),
+                'h' => modifiers.set(KeyModifiers::HYPER, true),
+                'a' => modifiers.set(KeyModifiers::ALT, true),
+                's' => modifiers.set(KeyModifiers::SHIFT, true),
+                'm' => modifiers.set(KeyModifiers::SUPER, true),
+                _ => return Err(format!("Invalid modifier {ch:?}")),
             }
         }
 
@@ -37,18 +48,18 @@ impl TryFrom<&str> for Key {
             "down" => KeyCode::Down,
             "home" => KeyCode::Home,
             "end" => KeyCode::End,
-            "pageUp" => KeyCode::PageUp,
-            "pageDown" => KeyCode::PageDown,
+            "pageup" => KeyCode::PageUp,
+            "pagedown" => KeyCode::PageDown,
             "tab" => KeyCode::Tab,
-            "backTab" => KeyCode::BackTab,
+            "backtab" => KeyCode::BackTab,
             "delete" => KeyCode::Delete,
             "insert" => KeyCode::Insert,
             "null" => KeyCode::Null,
             "esc" => KeyCode::Esc,
-            "capsLock" => KeyCode::CapsLock,
-            "scrollLock" => KeyCode::ScrollLock,
-            "numLock" => KeyCode::NumLock,
-            "printScreen" => KeyCode::PrintScreen,
+            "capslock" => KeyCode::CapsLock,
+            "scrolllock" => KeyCode::ScrollLock,
+            "numlock" => KeyCode::NumLock,
+            "printscreen" => KeyCode::PrintScreen,
             "break" => KeyCode::Pause,
             "menu" => KeyCode::Menu,
 
@@ -89,16 +100,6 @@ impl TryFrom<&str> for Key {
             "raisevolume" => KeyCode::Media(MediaKeyCode::RaiseVolume),
             "mutevolume" => KeyCode::Media(MediaKeyCode::MuteVolume),
 
-            // _ => {
-            //     // use key as
-            //     if key.len() == 1 && key.is_ascii() {
-            //         let char = key.chars().next().unwrap();
-
-            //         KeyCode::Char(key.chars().next().unwrap())
-            //     } else {
-            //         return Err(format!("Unknown key {key:?}"));
-            //     }
-            // }
             x if x.is_ascii() && x.len() == 1 => KeyCode::Char(x.chars().next().unwrap()),
 
             _ => return Err(format!("Unknown key {key:?}")),
@@ -108,31 +109,34 @@ impl TryFrom<&str> for Key {
     }
 }
 
-impl Into<String> for Key {
-    fn into(self) -> String {
-        let mut output = "".to_string();
-
+impl Display for Key {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.modifiers.contains(KeyModifiers::CONTROL) {
-            output += "C-";
+            f.write_str("C")?;
         }
 
         if self.modifiers.contains(KeyModifiers::HYPER) {
-            output += "H-";
+            f.write_str("H")?;
         }
 
         if self.modifiers.contains(KeyModifiers::ALT) {
-            output += "A-";
+            f.write_str("A")?;
         }
 
         if self.modifiers.contains(KeyModifiers::SHIFT) {
-            output += "S-";
+            f.write_str("S")?;
         }
 
-        // TODO they should be the same thing right?
+        // im gonna assume super and meta are the same modifier
         if self.modifiers.contains(KeyModifiers::SUPER)
             || self.modifiers.contains(KeyModifiers::META)
         {
-            output += "M-";
+            f.write_str("M")?;
+        }
+
+        // write the dash
+        if !self.modifiers.is_empty() {
+            f.write_str("-")?;
         }
 
         // if self.modifiers.contains(KeyModifiers::SHIFT) {
@@ -140,13 +144,71 @@ impl Into<String> for Key {
             KeyCode::Char(x) => x.to_string().to_ascii_uppercase(),
             // to differentiate it from pause media key
             KeyCode::Pause => "BREAK".to_string(),
+
+            // KeyCode already has Display implemented
             x => format!("{x}").to_uppercase(),
-            // KeyCode::Right => "RIGHT".to_string(),
         };
 
-        output += &key;
+        f.write_str(&key)?;
 
-        output
+        Ok(())
+    }
+}
+
+impl From<KeyEvent> for Key {
+    fn from(value: KeyEvent) -> Self {
+        Key {
+            code: value.code,
+            modifiers: value.modifiers,
+        }
+    }
+}
+
+/// Wraps a `Vec<Key>` so it implements `Display`
+#[derive(Debug, Clone)]
+pub struct KeySequence(pub Vec<Key>);
+
+impl From<Key> for KeySequence {
+    fn from(value: Key) -> Self {
+        Self(vec![value])
+    }
+}
+
+impl From<&Key> for KeySequence {
+    fn from(value: &Key) -> Self {
+        Self(vec![value.clone()])
+    }
+}
+
+impl From<&[Key]> for KeySequence {
+    fn from(value: &[Key]) -> Self {
+        Self(value.to_vec())
+    }
+}
+
+impl From<Vec<Key>> for KeySequence {
+    fn from(value: Vec<Key>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&Vec<Key>> for KeySequence {
+    fn from(value: &Vec<Key>) -> Self {
+        Self(value.clone())
+    }
+}
+
+impl Display for KeySequence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("[")?;
+
+        for key in &self.0 {
+            f.write_str(&format!(" {}", key))?;
+        }
+
+        f.write_str(" ]")?;
+
+        Ok(())
     }
 }
 
@@ -157,26 +219,32 @@ mod tests {
     #[test]
     fn test_key_to_string() {
         assert_eq!(
-            Into::<String>::into(Key {
-                code: KeyCode::Char('a'),
-                modifiers: KeyModifiers::all(),
-            }),
-            "C-H-A-S-M-A"
+            format!(
+                "{}",
+                Key {
+                    code: KeyCode::Char('a'),
+                    modifiers: KeyModifiers::all(),
+                }
+            ),
+            "CHASM-A"
         );
 
         assert_eq!(
-            Into::<String>::into(Key {
-                code: KeyCode::Right,
-                modifiers: KeyModifiers::all(),
-            }),
-            "C-H-A-S-M-RIGHT"
+            format!(
+                "{}",
+                Key {
+                    code: KeyCode::Right,
+                    modifiers: KeyModifiers::all(),
+                }
+            ),
+            "CHASM-RIGHT"
         );
     }
 
     #[test]
     fn test_key_from_string() {
         assert_eq!(
-            TryInto::<Key>::try_into("c-h-a-s-m-a"),
+            TryInto::<Key>::try_into("chasm-a"),
             Ok(Key {
                 code: KeyCode::Char('a'),
                 modifiers: KeyModifiers::all() - KeyModifiers::META,
@@ -184,11 +252,26 @@ mod tests {
         );
 
         assert_eq!(
-            TryInto::<Key>::try_into("c-h-a-s-m-left"),
+            TryInto::<Key>::try_into("chasm-left"),
             Ok(Key {
                 code: KeyCode::Left,
                 modifiers: KeyModifiers::all() - KeyModifiers::META,
             })
         );
+    }
+
+    #[test]
+    fn test_keysequence_to_string() {
+        let seq = KeySequence(vec![
+            Key {
+                code: KeyCode::Char('d'),
+                modifiers: KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            },
+            Key {
+                code: KeyCode::Char('d'),
+                modifiers: KeyModifiers::SHIFT,
+            },
+        ]);
+        assert_eq!(format!("{}", seq), "[ CS-D S-D ]");
     }
 }
