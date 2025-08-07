@@ -1,6 +1,4 @@
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::rc::Rc;
+use std::collections::VecDeque;
 use std::time::Instant;
 
 use crate::actions::Action;
@@ -19,7 +17,7 @@ pub struct Editor {
     pub buffer: Buffer,
 
     /// All buffers loaded
-    pub buffers: Vec<Buffer>,
+    pub buffers: VecDeque<Buffer>,
 
     /// Millis when last keypress happen
     last_keypress: Instant,
@@ -39,7 +37,7 @@ impl<'a> Default for Editor {
         Self {
             should_quit: false,
             buffer: Buffer::default(),
-            buffers: vec![],
+            buffers: VecDeque::new(),
             last_keypress: Instant::now(),
             key_buffer: vec![],
             keymap: Keymap::new(crate::MODE_NORM.into()),
@@ -118,35 +116,23 @@ impl Editor {
         std::mem::swap(self.buffers.get_mut(index).unwrap(), &mut self.buffer);
     }
 
-    // pub fn next_buffer(&mut self) {
-    //     if let Some(mut buffer) = self.buffers.swap_remove(0) {
-    //         std::mem::swap(&mut buffer, &mut self.buffer);
-    //     }
-    // }
+    pub fn next_buffer(&mut self) {
+        if let Some(mut buffer) = self.buffers.pop_back() {
+            std::mem::swap(&mut buffer, &mut self.buffer);
+            self.buffers.push_front(buffer);
+        }
+    }
+
+    pub fn prev_buffer(&mut self) {
+        if let Some(mut buffer) = self.buffers.pop_front() {
+            std::mem::swap(&mut buffer, &mut self.buffer);
+            self.buffers.push_back(buffer);
+        }
+    }
 
     fn execute_action(&mut self, action: Action) {
         action.execute(self)
     }
-
-    // /// Tries to execute action in `self.keymap` from `self.key_buffer`, returns true if successful
-    // fn try_execute_key_buffer(&mut self) {
-    //     assert!(!self.key_buffer.is_empty());
-
-    //     if let Some(entry) = self.keymap.get(&self.key_buffer) {
-    //         match &entry.action.clone() {
-    //             // basically unmapped
-    //             crate::actions::Action::None => {}
-
-    //             action => {
-    //                 action.execute(self);
-    //                 self.key_buffer.clear();
-    //             }
-    //         }
-    //     } else {
-    //         // always clear as its just non-mapped key sequence
-    //         self.key_buffer.clear();
-    //     }
-    // }
 }
 
 impl Widget for &Editor {
@@ -168,14 +154,18 @@ impl Widget for &Editor {
             .split(layout[1]);
 
         // show mode
-        Span::from(self.keymap.name[..4].to_uppercase())
-            .into_left_aligned_line()
-            .render(layout_statusbar[0], buf);
+        Span::from(format!(
+            "{}   {}",
+            self.keymap.name[..4].to_uppercase(),
+            self.buffer.name
+        ))
+        .into_left_aligned_line()
+        .render(layout_statusbar[0], buf);
 
         // statusline
         Span::from(format!(
             "{}  {}:{}",
-            Into::<KeySequence>::into(&self.key_buffer),
+            Into::<KeySequence>::into(&self.key_buffer), // TODO dont show if no keys pressed
             self.buffer.cursor.y,
             self.buffer.cursor.x
         ))

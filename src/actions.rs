@@ -66,8 +66,8 @@ impl Action {
             }
 
             Self::SetKeymap { mode } => editor.set_keymap(mode),
-            Self::BufferNext => editor.set_buffer(0),
-            Self::BufferPrev => editor.set_buffer(editor.buffers.len() - 1),
+            Self::BufferNext => editor.next_buffer(),
+            Self::BufferPrev => editor.prev_buffer(),
         }
     }
 }

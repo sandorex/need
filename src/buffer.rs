@@ -5,10 +5,13 @@ use ratatui::{
     style::Stylize,
     widgets::Widget,
 };
-use std::fmt::Debug;
+use std::{fmt::Debug, path::Path};
 
 #[derive(Debug, Clone)]
 pub struct Buffer {
+    /// Name shown for the buffer
+    pub name: String,
+
     // NOTE for now just use this
     pub lines: Vec<String>,
 
@@ -17,17 +20,15 @@ pub struct Buffer {
 
     /// Basically where in the file the current view starts
     pub view: Position,
-    // /// Current mode
-    // pub mode: String,
 }
 
 impl Default for Buffer {
     fn default() -> Self {
         Self {
+            name: "Scratch".to_string(),
             lines: vec!["".to_string()],
             cursor: Position { x: 0, y: 0 },
             view: Position { x: 0, y: 0 },
-            // mode: crate::MODE_NORM.to_string(),
         }
     }
 }
@@ -36,7 +37,16 @@ impl Buffer {
     pub fn from_file(path: &str) -> std::io::Result<Self> {
         let file = std::fs::read_to_string(path)?;
 
-        Ok(Self::from_raw(&file))
+        let mut buffer = Self::from_raw(&file);
+
+        // rename buffer
+        buffer.name = Path::new(path)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+
+        Ok(buffer)
     }
 
     pub fn from_raw(raw: &str) -> Self {

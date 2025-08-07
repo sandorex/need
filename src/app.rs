@@ -81,7 +81,7 @@ impl Default for App {
             &Action::BufferNext,
         );
 
-        editor.buffers.push(Buffer::from_raw(
+        editor.buffers.push_front(Buffer::from_raw(
             r#"aghahwahg
 
 xwxwxwxwxwdfwf
@@ -112,14 +112,7 @@ xwxwxwxwxwdfwf
 "#,
         ));
 
-        editor.buffers.push(Buffer::from_raw("third one"));
-        // editor.keymap.add(
-        //     &[Key {
-        //         code: KeyCode::Char('d'),
-        //         ..Default::default()
-        //     }],
-        //     &Action::CursorMoveRel { x: 1, y: 0 },
-        // );
+        editor.buffers.push_front(Buffer::from_raw("third one"));
 
         Self { editor }
     }
