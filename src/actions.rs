@@ -1,99 +1,91 @@
 use crate::editor::Editor;
 use serde::{Deserialize, Serialize};
 
-pub trait Action {
-    // fn name(&self) -> &str;
-    // fn description(&self) -> &str;
-    // maybe add &mut Buffer? so the action can edit the current buffer directly?
-    fn execute(&self, editor: &mut Editor);
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(tag = "action")]
 #[serde(rename_all(serialize = "kebab-case"))]
-pub enum Actions {
-    Chain(Chain),
-    Sleep(Sleep),
-    Mode(Mode),
-    MoveTo(MoveTo),
+pub enum Action {
+    /// Basically a no-op
+    None,
+
+    /// Inserts character
+    Insert {
+        ch: Option<char>,
+    },
+
+    /// Cancels current chorded key
+    Cancel,
+    Chain {
+        actions: Vec<Self>,
+    },
+    CursorMove {
+        x: u16,
+        y: u16,
+    },
+    CursorMoveRel {
+        x: i32,
+        y: i32,
+    },
+
+    SetKeymap {
+        mode: String,
+    },
+
+    BufferNext,
+    BufferPrev,
 }
 
-impl Actions {
+impl Action {
     pub fn execute(&self, editor: &mut Editor) {
         match self {
-            Self::Chain(x) => x.execute(editor),
-            Self::Sleep(x) => x.execute(editor),
-            Self::Mode(x) => x.execute(editor),
-            Self::MoveTo(x) => x.execute(editor),
+            Self::None => {}
+            Self::Insert { ch } => todo!(),
+            Self::Cancel => editor.key_buffer.clear(),
+
+            // just run each one sequentially
+            Self::Chain { actions } => {
+                for i in actions {
+                    i.execute(editor);
+                }
+            }
+            Self::CursorMove { x, y } => {
+                editor.buffer.cursor.x = *x;
+                editor.buffer.cursor.y = *y;
+            }
+            Self::CursorMoveRel { x, y } => {
+                editor.buffer.cursor.x = editor
+                    .buffer
+                    .cursor
+                    .x
+                    .saturating_add_signed(TryInto::try_into(*x).unwrap());
+                editor.buffer.cursor.y = editor
+                    .buffer
+                    .cursor
+                    .y
+                    .saturating_add_signed(TryInto::try_into(*y).unwrap());
+            }
+
+            Self::SetKeymap { mode } => editor.set_keymap(mode),
+            Self::BufferNext => editor.set_buffer(0),
+            Self::BufferPrev => editor.set_buffer(editor.buffers.len() - 1),
         }
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct Chain {
-    chain: Vec<Actions>,
-}
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
 
-impl Action for Chain {
-    fn execute(&self, editor: &mut Editor) {
-        for action in &self.chain {
-            action.execute(editor);
-        }
-    }
-}
+//     #[test]
+//     fn test_action_serialization() {
+//         let action = Action::Chain {
+//             actions: vec![Action::Cancel, Action::Cancel],
+//         };
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct Sleep {
-    /// Time in millis
-    pub time: u64,
-}
+//         let output = toml::to_string(&action).unwrap();
 
-impl Action for Sleep {
-    fn execute(&self, editor: &mut Editor) {
-        // TODO if i do raw sleep then will the editor freeze?
-    }
-}
+//         dbg!(&output);
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct Mode {
-    pub mode: String,
-}
-
-impl Action for Mode {
-    fn execute(&self, editor: &mut Editor) {
-        println!("Switch to {:?}", self.mode);
-        // TODO implement editor.set_mode
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct MoveTo {
-    pub x: u16,
-    pub y: u16,
-}
-
-impl Action for MoveTo {
-    fn execute(&self, editor: &mut Editor) {
-        // editor.view.cursor.x = self.x;
-        // editor.view.cursor.y = self.y;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_actions_serialization() {
-        let action = Actions::Chain(Chain {
-            chain: vec![
-                Actions::MoveTo(MoveTo { x: 16, y: 12 }),
-                Actions::Mode(Mode {
-                    mode: "aaa".to_string(),
-                }),
-            ],
-        });
-
-        assert_eq!(toml::to_string(&action).unwrap(), "xx".to_string());
-    }
-}
+//         assert_eq!(output, "xx".to_string());
+//     }
+// }

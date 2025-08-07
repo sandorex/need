@@ -2,69 +2,142 @@ use std::{io, ops::DerefMut, time::Duration};
 
 use ratatui::{
     DefaultTerminal, Frame,
-    crossterm::event::{self, Event, KeyCode},
+    crossterm::event::{self, Event, KeyCode, KeyModifiers},
 };
 
-use crate::{buffer::Buffer, editor::Editor, keymap::Keymap};
+use crate::{actions::Action, buffer::Buffer, editor::Editor, keymap::Keymap, util::Key};
 
 #[derive(Debug)]
 pub struct App {
-    // exit: bool,
     editor: Editor,
 }
 
 impl Default for App {
     fn default() -> Self {
-        Self {
-            // exit: false,
-            editor: Editor::new(),
-        }
+        let mut editor = Editor::new();
+
+        editor.keymap.add(
+            &[Key {
+                code: KeyCode::Esc,
+                ..Default::default()
+            }],
+            &Action::Cancel,
+        );
+        editor.keymap.add(
+            &[Key {
+                code: KeyCode::Down,
+                ..Default::default()
+            }],
+            &Action::CursorMoveRel { x: 0, y: 1 },
+        );
+        editor.keymap.add(
+            &[Key {
+                code: KeyCode::Up,
+                ..Default::default()
+            }],
+            &Action::CursorMoveRel { x: 0, y: -1 },
+        );
+        editor.keymap.add(
+            &[Key {
+                code: KeyCode::Left,
+                ..Default::default()
+            }],
+            &Action::CursorMoveRel { x: -1, y: 0 },
+        );
+        editor.keymap.add(
+            &[Key {
+                code: KeyCode::Right,
+                ..Default::default()
+            }],
+            &Action::CursorMoveRel { x: 1, y: 0 },
+        );
+
+        editor.keymap.add(
+            &[
+                Key {
+                    code: KeyCode::Char('d'),
+                    ..Default::default()
+                },
+                Key {
+                    code: KeyCode::Char('d'),
+                    ..Default::default()
+                },
+            ],
+            &Action::CursorMoveRel { x: 1, y: 0 },
+        );
+
+        editor.keymap.add(
+            &[Key {
+                code: KeyCode::Char('x'),
+                modifiers: KeyModifiers::CONTROL,
+            }],
+            &Action::BufferPrev,
+        );
+        editor.keymap.add(
+            &[Key {
+                code: KeyCode::Char('c'),
+                modifiers: KeyModifiers::CONTROL,
+            }],
+            &Action::BufferNext,
+        );
+
+        editor.buffers.push(Buffer::from_raw(
+            r#"aghahwahg
+
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+xwxwxwxwxwdfwf
+"#,
+        ));
+
+        editor.buffers.push(Buffer::from_raw("third one"));
+        // editor.keymap.add(
+        //     &[Key {
+        //         code: KeyCode::Char('d'),
+        //         ..Default::default()
+        //     }],
+        //     &Action::CursorMoveRel { x: 1, y: 0 },
+        // );
+
+        Self { editor }
     }
 }
 
 impl App {
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> io::Result<()> {
-        self.editor.buffers[0] = Buffer::from_raw(
-            r#"Hello there
-
-This is the third line
-
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-The fifth line
-
-
-I dont relaly know what line this is"#,
-        );
-
         while !self.editor.should_quit {
             terminal.draw(|frame| self.draw(frame))?;
-
-            self.editor.update();
 
             // handle events only if there are any
             if ratatui::crossterm::event::poll(Duration::from_millis(100))? {
                 let event = ratatui::crossterm::event::read()?;
-                self.editor.handle_crossterm_event(&event);
+                self.editor.handle_event(&event);
             }
+
+            // update the editor
+            self.editor.update();
         }
 
         Ok(())

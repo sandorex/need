@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Instant;
 
+use crate::actions::Action;
 use crate::buffer::Buffer;
 use crate::keymap::Keymap;
 use crate::util::{Key, KeySequence};
@@ -15,9 +16,7 @@ pub struct Editor {
     /// Should the editor close (handled by the app)
     pub should_quit: bool,
 
-    // TODO buffers should be accessed using a function, and advanced like so editor.set_buf, editor.get_buf(None) -> current
-    /// Current focused buffer
-    pub buffer_index: usize,
+    pub buffer: Buffer,
 
     /// All buffers loaded
     pub buffers: Vec<Buffer>,
@@ -29,24 +28,22 @@ pub struct Editor {
     pub key_buffer: Vec<Key>,
 
     /// Current keymap
-    pub keymap: Rc<Keymap>,
+    pub keymap: Keymap,
 
-    /// All keymaps defined
-    pub keymaps: HashMap<String, Rc<Keymap>>,
+    /// Stores loaded keymaps
+    pub keymaps: Vec<Keymap>,
 }
 
 impl<'a> Default for Editor {
     fn default() -> Self {
         Self {
             should_quit: false,
-            buffer_index: 0,
-            // TODO this could use a scratchpad buffer thingy
-            // create empty buffer by default
-            buffers: vec![Buffer::default()],
+            buffer: Buffer::default(),
+            buffers: vec![],
             last_keypress: Instant::now(),
             key_buffer: vec![],
-            keymap: Rc::new(Keymap::new("NORMAL".to_string())),
-            keymaps: HashMap::new(),
+            keymap: Keymap::new(crate::MODE_NORM.into()),
+            keymaps: vec![],
         }
     }
 }
@@ -58,31 +55,21 @@ impl Editor {
         }
     }
 
-    pub fn handle_crossterm_event(&mut self, event: &Event) {
-        // remember time and then use that to detect if no key is pressed for long enough for chorded keys
+    pub fn handle_event(&mut self, event: &Event) {
         match event {
             Event::Key(e) if e.code == KeyCode::Char('q') => {
                 self.should_quit = true;
             }
-            Event::Key(ev) => {
-                if ev.code == KeyCode::Enter {
-                    self.key_buffer.clear();
-                    return;
-                }
+            Event::Key(ev) if ev.kind == KeyEventKind::Press => {
+                self.key_buffer.push(ev.clone().into());
+                self.last_keypress = Instant::now();
 
-                if ev.kind == KeyEventKind::Press {
-                    self.key_buffer.push(ev.clone().into());
-                    self.last_keypress = Instant::now();
-
-                    // TODO this is really ugly, could also be its own function
-                    // if the keymap has no more keys defined then just execute the action
-                    if let Some(entry) = self.keymap.get(&self.key_buffer) {
-                        if entry.get_map().is_none() {
-                            if let Some(action) = entry.get_action().cloned() {
-                                self.key_buffer.clear();
-                                action.execute(self);
-                            }
-                        }
+                // see if the current key sequence is mapped
+                if let Some(entry) = self.keymap.get(&self.key_buffer) {
+                    if !entry.has_children() {
+                        // the entry has no cihldren, just run it instantly
+                        self.execute_action(entry.action.clone());
+                        self.key_buffer.clear();
                     }
                 }
             }
@@ -91,25 +78,80 @@ impl Editor {
     }
 
     pub fn update(&mut self) {
-        // execute action if defined with current key buffer after some delay
-        if !self.key_buffer.is_empty() {
-            let elapsed = self.last_keypress.elapsed().as_millis();
-            if elapsed >= 300 {
-                if let Some(entry) = self.keymap.get(&self.key_buffer) {
-                    if let Some(action) = entry.get_action().cloned() {
+        const KEY_SEQ_TIMEOUT: u128 = 300;
+
+        // wait for some time until the key sequence is executed so user can enter more keys
+        if !self.key_buffer.is_empty()
+            && self.last_keypress.elapsed().as_millis() >= KEY_SEQ_TIMEOUT
+        {
+            // check if current sequence is mapped
+            if let Some(entry) = self.keymap.get(&self.key_buffer) {
+                if entry.action == Action::None {
+                    if !entry.has_children() {
+                        // the entry is basically invalid with no children or action
                         self.key_buffer.clear();
-                        action.execute(self);
                     }
+
+                    // in this case the entry had children so it should wait for next key as it cannot be executed
+                } else {
+                    self.execute_action(entry.action.clone());
+                    self.key_buffer.clear();
                 }
+            } else {
+                // just clear it as it was a unmapped sequence
+                self.key_buffer.clear();
             }
         }
     }
+
+    pub fn set_keymap(&mut self, name: &str) {
+        // find the requested keymap and swap them
+        if let Some(keymap) = self.keymaps.iter_mut().find(|x| x.name == name) {
+            std::mem::swap(keymap, &mut self.keymap);
+        }
+    }
+
+    pub fn set_buffer(&mut self, index: usize) {
+        assert!(index < self.buffers.len());
+
+        // swap the buffers
+        std::mem::swap(self.buffers.get_mut(index).unwrap(), &mut self.buffer);
+    }
+
+    // pub fn next_buffer(&mut self) {
+    //     if let Some(mut buffer) = self.buffers.swap_remove(0) {
+    //         std::mem::swap(&mut buffer, &mut self.buffer);
+    //     }
+    // }
+
+    fn execute_action(&mut self, action: Action) {
+        action.execute(self)
+    }
+
+    // /// Tries to execute action in `self.keymap` from `self.key_buffer`, returns true if successful
+    // fn try_execute_key_buffer(&mut self) {
+    //     assert!(!self.key_buffer.is_empty());
+
+    //     if let Some(entry) = self.keymap.get(&self.key_buffer) {
+    //         match &entry.action.clone() {
+    //             // basically unmapped
+    //             crate::actions::Action::None => {}
+
+    //             action => {
+    //                 action.execute(self);
+    //                 self.key_buffer.clear();
+    //             }
+    //         }
+    //     } else {
+    //         // always clear as its just non-mapped key sequence
+    //         self.key_buffer.clear();
+    //     }
+    // }
 }
 
 impl Widget for &Editor {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
         use ratatui::layout::{Constraint, Direction, Layout};
-        use ratatui::style::Stylize;
         use ratatui::text::Span;
 
         // always show statusbar on the bottom
@@ -125,42 +167,22 @@ impl Widget for &Editor {
             .constraints([Constraint::Percentage(50); 2])
             .split(layout[1]);
 
+        // show mode
         Span::from(self.keymap.name[..4].to_uppercase())
             .into_left_aligned_line()
             .render(layout_statusbar[0], buf);
 
-        if let Some(buffer) = self.buffers.get(self.buffer_index) {
-            Span::from(format!(
-                "{}  {}:{}",
-                Into::<KeySequence>::into(&self.key_buffer),
-                buffer.cursor.y,
-                buffer.cursor.x
-            ))
-            .into_right_aligned_line()
-            .render(layout_statusbar[1], buf);
+        // statusline
+        Span::from(format!(
+            "{}  {}:{}",
+            Into::<KeySequence>::into(&self.key_buffer),
+            self.buffer.cursor.y,
+            self.buffer.cursor.x
+        ))
+        .into_right_aligned_line()
+        .render(layout_statusbar[1], buf);
 
-            buffer.render(editor_area, buf);
-        }
-
-        // Span::from(self.mode()[..4].to_uppercase())
-        //     .into_left_aligned_line()
-        //     .render(layout_statusbar[0], buf);
-
-        // Span::from(format!("{}:{}", self.view.cursor.y, self.view.cursor.x))
-        //     .into_right_aligned_line()
-        //     .render(layout_statusbar[1], buf);
-
-        // self.view.render(editor_area, buf);
-        // Paragraph::new(self.state.text.as_str()).render(editor_area, buf);
-
-        // buf.set_style(
-        //     Rect::new(
-        //         editor_area.x + self.view.cursor.x,
-        //         editor_area.y + self.view.cursor.y,
-        //         1,
-        //         1,
-        //     ),
-        //     Style::default().reversed(),
-        // );
+        // show the buffer
+        self.buffer.render(editor_area, buf);
     }
 }

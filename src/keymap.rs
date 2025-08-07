@@ -1,49 +1,48 @@
 use ratatui::crossterm::event::KeyCode;
 
-use crate::{actions::Actions, util::Key};
+use crate::{actions::Action, util::Key};
 use std::collections::HashMap;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct KeymapEntry {
-    action: Option<Actions>,
+    pub action: Action,
     map: HashMap<Key, Self>,
 }
 
 impl KeymapEntry {
     pub fn new() -> Self {
         Self {
-            action: None,
+            action: Action::None,
             map: HashMap::new(),
         }
     }
 
-    /// Does the entry contain an action
-    pub fn get_action(&self) -> Option<&Actions> {
-        self.action.as_ref()
+    pub fn has_children(&self) -> bool {
+        !self.map.is_empty()
     }
 
-    /// Get mappings in the entry, returns None if no mappings are defined
-    pub fn get_map(&self) -> Option<&HashMap<Key, Self>> {
-        if self.map.is_empty() {
-            None
-        } else {
-            Some(&self.map)
-        }
-    }
+    // /// Get mappings in the entry, returns None if no mappings are defined
+    // pub fn get_map(&self) -> Option<&HashMap<Key, Self>> {
+    //     if self.map.is_empty() {
+    //         None
+    //     } else {
+    //         Some(&self.map)
+    //     }
+    // }
 
-    // creates a sequence of keys
-    pub fn sequence(keys: &[Key], action: &Actions) -> Self {
-        let mut entry = KeymapEntry::new();
+    // // creates a sequence of keys
+    // pub fn sequence(keys: &[Key], action: &Action) -> Self {
+    //     let mut entry = KeymapEntry::new();
 
-        entry.add(&keys, action);
+    //     entry.add(&keys, action);
 
-        entry
-    }
+    //     entry
+    // }
 
-    pub fn add(&mut self, keys: &[Key], action: &Actions) {
+    pub fn add(&mut self, keys: &[Key], action: &Action) {
         if keys.is_empty() {
             // no more keys set current entry
-            self.action = Some(action.clone());
+            self.action = action.clone();
         } else {
             let first = keys.first().unwrap();
 
@@ -90,18 +89,18 @@ impl KeymapEntry {
         }
     }
 
-    pub fn cleanup(&mut self) {
-        for key in self.map.keys().cloned().collect::<Vec<_>>() {
-            let value = self.map.get_mut(&key).unwrap();
+    // pub fn cleanup(&mut self) {
+    //     for key in self.map.keys().cloned().collect::<Vec<_>>() {
+    //         let value = self.map.get_mut(&key).unwrap();
 
-            // remove entries which do not have an action or mapping
-            if value.action.is_none() && value.map.is_empty() {
-                self.map.remove(&key);
-            } else if !value.map.is_empty() {
-                value.cleanup();
-            }
-        }
-    }
+    //         // remove entries which do not have an action or mapping
+    //         if value.map.is_empty() {
+    //             self.map.remove(&key);
+    //         } else if !value.map.is_empty() {
+    //             value.cleanup();
+    //         }
+    //     }
+    // }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -111,55 +110,18 @@ pub struct Keymap {
 }
 
 impl Keymap {
-    pub fn new(name: String) -> Self {
-        let mut x = Self {
-            name,
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
             keymap: KeymapEntry::new(),
-        };
-
-        x.add(
-            &[
-                Key {
-                    code: KeyCode::Char('d'),
-                    ..Default::default()
-                },
-                Key {
-                    code: KeyCode::Char('d'),
-                    ..Default::default()
-                },
-            ],
-            &Actions::Mode(crate::actions::Mode {
-                mode: "TEST".into(),
-            }),
-        );
-        x.add(
-            &[
-                Key {
-                    code: KeyCode::Char('d'),
-                    ..Default::default()
-                },
-                Key {
-                    code: KeyCode::Char('d'),
-                    ..Default::default()
-                },
-                Key {
-                    code: KeyCode::Char('c'),
-                    ..Default::default()
-                },
-            ],
-            &Actions::Mode(crate::actions::Mode {
-                mode: "TEST2".into(),
-            }),
-        );
-
-        x
+        }
     }
 
-    pub fn add(&mut self, keys: &[Key], action: &Actions) {
+    pub fn add(&mut self, keys: &[Key], action: &Action) {
         self.keymap.add(keys, action);
     }
 
-    pub fn remove(&mut self, keys: &[Key], action: &Actions) {
+    pub fn remove(&mut self, keys: &[Key], action: &Action) {
         self.keymap.add(keys, action);
     }
 
@@ -168,94 +130,64 @@ impl Keymap {
     }
 }
 
-// #[derive(Debug)]
-// pub struct Keymap {
-//     name: String,
-//     keymap: HashMap<Vec<Key>, Actions>,
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use ratatui::crossterm::event::KeyCode;
+
+//     #[test]
+//     fn test_keymap_entry_set() {
+// let entry = KeymapEntry::sequence(
+//     &[
+//         Key {
+//             code: KeyCode::Char('d'),
+//             ..Default::default()
+//         },
+//         Key {
+//             code: KeyCode::Char('d'),
+//             ..Default::default()
+//         },
+//     ],
+//     &Action::Sleep(Sleep { time: 100 }),
+// );
+
+// dbg!(&entry);
+
+// TODO add more tests
+
+// assert_eq!(entry, KeymapEntry {
+//     action: None,
+//     map: {
+//         Key {
+//             code: Char(
+//                 'd',
+//             ),
+//             modifiers: KeyModifiers(
+//                 0x0,
+//             ),
+//         }: KeymapEntry {
+//             action: None,
+//             map: {
+//                 Key {
+//                     code: Char(
+//                         'd',
+//                     ),
+//                     modifiers: KeyModifiers(
+//                         0x0,
+//                     ),
+//                 }: KeymapEntry {
+//                     action: Some(
+//                         Sleep(
+//                             Sleep {
+//                                 time: 100,
+//                             },
+//                         ),
+//                     ),
+//                     map: {},
+//                 },
+//             },
+//         },
+//     },
+// });
+//     }
 // }
-
-// impl<'a> Keymap {
-//     pub fn new(name: String) -> Self {
-//         Self {
-//             name,
-//             keymap: HashMap::new(),
-//         }
-//     }
-
-//     pub fn add(&mut self, key: Vec<Key>, action: Actions) {
-//         self.keymap.insert(key, action);
-//     }
-
-//     /// Remove key binding
-//     pub fn remove(&mut self, key: &Vec<Key>) {
-//         self.keymap.remove(key);
-//     }
-
-//     /// Get action for specific key sequence
-//     pub fn get(&'a self, key: &Vec<Key>) -> Option<&'a Actions> {
-//         self.keymap.get(key)
-//     }
-// }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::actions::Sleep;
-    use ratatui::crossterm::event::KeyCode;
-
-    #[test]
-    fn test_keymap_entry_set() {
-        let entry = KeymapEntry::sequence(
-            &[
-                Key {
-                    code: KeyCode::Char('d'),
-                    ..Default::default()
-                },
-                Key {
-                    code: KeyCode::Char('d'),
-                    ..Default::default()
-                },
-            ],
-            &Actions::Sleep(Sleep { time: 100 }),
-        );
-
-        dbg!(&entry);
-
-        // TODO add more tests
-
-        // assert_eq!(entry, KeymapEntry {
-        //     action: None,
-        //     map: {
-        //         Key {
-        //             code: Char(
-        //                 'd',
-        //             ),
-        //             modifiers: KeyModifiers(
-        //                 0x0,
-        //             ),
-        //         }: KeymapEntry {
-        //             action: None,
-        //             map: {
-        //                 Key {
-        //                     code: Char(
-        //                         'd',
-        //                     ),
-        //                     modifiers: KeyModifiers(
-        //                         0x0,
-        //                     ),
-        //                 }: KeymapEntry {
-        //                     action: Some(
-        //                         Sleep(
-        //                             Sleep {
-        //                                 time: 100,
-        //                             },
-        //                         ),
-        //                     ),
-        //                     map: {},
-        //                 },
-        //             },
-        //         },
-        //     },
-        // });
-    }
-}
